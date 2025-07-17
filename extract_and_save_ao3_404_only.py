@@ -441,15 +441,65 @@ class AO3NotFoundScraper:
                     stats_html += f'<div class="stat-item"><strong>{self._escape_html(k)}:</strong> {self._escape_html(v)}</div>'
             stats_html += '</div>'
 
+            # --- NEW: Logic for expandable summary ---
+            summary_html = ""
+            summary_text = self._escape_html(work.summary)
+            # Use character count as a proxy for line count
+            if len(summary_text) > 400:
+                # Find a good place to truncate (the last period within the first 400 chars)
+                truncate_at = summary_text[:400].rfind('.')
+                if truncate_at == -1: # No period found
+                    truncate_at = 400
+                
+                short_summary = summary_text[:truncate_at+1]
+                long_summary = summary_text
+                
+                summary_html = f"""
+                <span class="summary-short">{short_summary}</span>
+                <span class="summary-long" style="display:none;">{long_summary}</span>
+                <a href="#" class="summary-toggle">[ + ]</a>
+                """
+            else:
+                summary_html = summary_text
+
             work_entries_html += f"""
             <div class="work-entry">
                 <h2 class="title"><a href="{work.pdf_url}" target="_blank">{self._escape_html(work.title)}</a></h2>
-                <div class="summary">{self._escape_html(work.summary)}</div>
+                <div class="summary">{summary_html}</div>
                 {stats_html}
             </div>"""
+        
+        # --- UPDATED: CSS to style the new summary elements ---
+        css_content = "body{font-family:'Times New Roman',Times,serif;margin:0;background-color:#fff;color:#333;line-height:1.6;}.container{max-width:900px;margin:2rem auto;padding:1rem 2rem;background-color:#fff;border-radius:8px;box-shadow:0 2px 8px rgba(0,0,0,0.1);}h1{text-align:center;color:#5B92E5;border-bottom:2px solid #cce0ff;padding-bottom:1rem;margin-bottom:2rem;}.work-entry{border:1px solid #cce0ff;border-radius:8px;margin-bottom:1.5rem;padding:1.5rem;}.title{font-size:1.5rem;margin-top:0;margin-bottom:.5rem;color:#004a99;}.title a{color:inherit;text-decoration:none;}.title a:hover{text-decoration:underline;}.summary{margin-top:1rem;padding-top:1rem;border-top:1px solid #eaf4ff;color:#333;}.stats{display:grid;grid-template-columns:repeat(auto-fit,minmax(200px,1fr));gap:.5rem 1rem;margin-top:1rem;font-size:.9rem;}.stat-item{background-color:#eaf4ff;padding:.4rem .8rem;border-radius:4px;}.stat-item strong{color:#004a99;}.summary-toggle{margin-left:8px;font-weight:bold;color:#5B92E5;text-decoration:none;font-size:0.9em;}.summary-long{display:none;}"
+        
+        # --- NEW: Embedded JavaScript for the expand/collapse functionality ---
+        javascript_content = """
+        <script>
+            document.addEventListener('DOMContentLoaded', function() {
+                const toggles = document.querySelectorAll('.summary-toggle');
+                toggles.forEach(function(toggle) {
+                    toggle.addEventListener('click', function(event) {
+                        event.preventDefault();
+                        const summaryDiv = this.parentElement;
+                        const shortSpan = summaryDiv.querySelector('.summary-short');
+                        const longSpan = summaryDiv.querySelector('.summary-long');
 
-        css_content = "body{font-family:'Times New Roman',Times,serif;margin:0;background-color:#fff;color:#333;line-height:1.6;}.container{max-width:900px;margin:2rem auto;padding:1rem 2rem;background-color:#fff;border-radius:8px;box-shadow:0 2px 8px rgba(0,0,0,0.1);}h1{text-align:center;color:#5B92E5;border-bottom:2px solid #cce0ff;padding-bottom:1rem;margin-bottom:2rem;}.work-entry{border:1px solid #cce0ff;border-radius:8px;margin-bottom:1.5rem;padding:1.5rem;}.title{font-size:1.5rem;margin-top:0;margin-bottom:.5rem;color:#004a99;}.title a{color:inherit;text-decoration:none;}.title a:hover{text-decoration:underline;}.summary{margin-top:1rem;padding-top:1rem;border-top:1px solid #eaf4ff;color:#333;}.stats{display:grid;grid-template-columns:repeat(auto-fit,minmax(200px,1fr));gap:.5rem 1rem;margin-top:1rem;font-size:.9rem;}.stat-item{background-color:#eaf4ff;padding:.4rem .8rem;border-radius:4px;}.stat-item strong{color:#004a99;}"
-        html_content = f"""<!DOCTYPE html><html lang="en"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1.0"><title>Report of 'Not Found' AO3 Works</title><style>{css_content}</style></head><body><div class="container"><h1>{report_title}</h1>{work_entries_html}</div></body></html>"""
+                        if (longSpan.style.display === 'none') {
+                            longSpan.style.display = 'inline';
+                            shortSpan.style.display = 'none';
+                            this.textContent = '[ - ]';
+                        } else {
+                            longSpan.style.display = 'none';
+                            shortSpan.style.display = 'inline';
+                            this.textContent = '[ + ]';
+                        }
+                    });
+                });
+            });
+        </script>
+        """
+
+        html_content = f"""<!DOCTYPE html><html lang="en"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1.0"><title>Report of 'Not Found' AO3 Works</title><style>{css_content}</style></head><body><div class="container"><h1>{report_title}</h1>{work_entries_html}</div>{javascript_content}</body></html>"""
 
         try:
             with open(config.output_html_file, "w", encoding="utf-8") as f:
@@ -514,7 +564,7 @@ class AO3NotFoundScraper:
         self.master_data = updated_master_data
         self._save_master_data()
         
-        report_title = f"Complete Report of 'Not Found' AO3 Works ({len(self.master_data)} Total)"
+        report_title = f"Deleted AO3 Works Archive ({len(self.master_data)} Total)"
         self.generate_report(list(self.master_data.values()), report_title)
 
     def run(self):
@@ -572,7 +622,6 @@ class AO3NotFoundScraper:
         if self.session_results:
             self._save_master_data()
 
-        # --- UPDATED: Always generate a full, cumulative report ---
         all_results = list(self.master_data.values())
         report_title = f"Complete Report of 'Not Found' AO3 Works ({len(all_results)} Total)"
         self.generate_report(all_results, report_title)
