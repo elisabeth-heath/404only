@@ -1,0 +1,7 @@
+# Ignore data and cache files
+master_404_data.json
+known_ok_urls.txt
+urls.txt
+
+# Ignore logs
+404_scraper.log
